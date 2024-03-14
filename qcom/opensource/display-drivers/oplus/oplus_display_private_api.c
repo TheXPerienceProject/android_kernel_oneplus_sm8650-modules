@@ -155,17 +155,17 @@ int dsi_panel_spr_mode(struct dsi_panel *panel, int mode)
 
 	switch (mode) {
 	case 0:
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SPR_MODE0);
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SPR_MODE0, false);
 		break;
 	case 1:
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SPR_MODE1);
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SPR_MODE1, false);
 		break;
 	case 2:
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SPR_MODE2);
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SPR_MODE2, false);
 		break;
 	default:
 		rc = dsi_panel_tx_cmd_set(panel,
-				DSI_CMD_SPR_MODE0);
+				DSI_CMD_SPR_MODE0, false);
 		LCD_ERR("[%s] Invalid spr mode %d\n",
 				panel->oplus_priv.vendor_name, mode);
 		break;
@@ -221,7 +221,7 @@ int dsi_panel_read_panel_reg(struct dsi_display_ctrl *ctrl,
 		goto error;
 	}
 
-	rc = dsi_ctrl_cmd_transfer(ctrl->ctrl, &cmdsreq);
+	rc = dsi_ctrl_cmd_transfer(ctrl->ctrl, &cmdsreq, false);
 	if (rc < 0) {
 		LCD_ERR("rx cmd transfer failed, rc=%d\n", rc);
 	}
@@ -271,7 +271,7 @@ int dsi_panel_read_panel_reg_unlock(struct dsi_display_ctrl *ctrl,
 		goto error;
 	}
 
-	rc = dsi_ctrl_cmd_transfer(ctrl->ctrl, &cmdsreq);
+	rc = dsi_ctrl_cmd_transfer(ctrl->ctrl, &cmdsreq, false);
 
 	if (rc < 0) {
 		pr_err("%s, dsi_display_read_panel_reg rx cmd transfer failed rc=%d\n",
@@ -616,7 +616,7 @@ static ssize_t oplus_display_get_panel_serial_number(struct kobject *obj,
 		if (display->panel->oplus_ser.is_switch_page) {
 			mutex_lock(&display->display_lock);
 			mutex_lock(&display->panel->panel_lock);
-			ret = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_PANEL_DATE_SWITCH);
+			ret = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_PANEL_DATE_SWITCH, false);
 			mutex_unlock(&display->panel->panel_lock);
 			mutex_unlock(&display->display_lock);
 			if (ret) {
@@ -704,7 +704,7 @@ static ssize_t oplus_display_get_panel_serial_number(struct kobject *obj,
 			/* switch default page */
 			mutex_lock(&display->display_lock);
 			mutex_lock(&display->panel->panel_lock);
-			ret = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_DEFAULT_SWITCH_PAGE);
+			ret = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_DEFAULT_SWITCH_PAGE, false);
 			if (ret) {
 				printk(KERN_ERR"%s Failed to set DSI_CMD_DEFAULT_SWITCH_PAGE !!\n", __func__);
 				mutex_unlock(&display->panel->panel_lock);
@@ -862,7 +862,7 @@ int oplus_display_panel_get_id_unlock(void *buf)
 	/* if (__oplus_get_power_status() == OPLUS_DISPLAY_POWER_ON) { */
 	if (display->panel->power_mode == SDE_MODE_DPMS_ON) {
 		if (!strcmp(display->panel->oplus_priv.vendor_name, "A0005")) {
-			ret = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_PANEL_INFO_SWITCH_PAGE);
+			ret = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_PANEL_INFO_SWITCH_PAGE, false);
 			if (ret < 0) {
 				DSI_ERR("Read AA545/AC090 P 3 A0005 panel id switch page failed!\n");
 			}
@@ -928,7 +928,7 @@ static ssize_t oplus_display_get_panel_id(struct kobject *obj,
 		if (!strcmp(display->panel->oplus_priv.vendor_name , "A0005")) {
 			mutex_lock(&display->display_lock);
 			mutex_lock(&display->panel->panel_lock);
-			ret = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_PANEL_INFO_SWITCH_PAGE);
+			ret = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_PANEL_INFO_SWITCH_PAGE, false);
 			mutex_unlock(&display->panel->panel_lock);
 			mutex_unlock(&display->display_lock);
 			if (ret < 0) {
@@ -1255,7 +1255,7 @@ static ssize_t oplus_display_set_hbm_max_debug(struct kobject *obj,
 		last_bl = oplus_last_backlight;
 		if (panel->cur_mode->priv_info->cmd_sets[DSI_CMD_HBM_MAX].count) {
 			mutex_lock(&panel->panel_lock);
-			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_HBM_MAX);
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_HBM_MAX, false);
 			mutex_unlock(&panel->panel_lock);
 		}
 		else {
@@ -1758,9 +1758,9 @@ next:
 	}
 
 	if (enable) {
-		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_DATA_DIMMING_ON);
+		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_DATA_DIMMING_ON, false);
 	} else {
-		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_DATA_DIMMING_OFF);
+		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_DATA_DIMMING_OFF, false);
 	}
 
 	if (display->config.panel_mode == DSI_OP_CMD_MODE) {
@@ -2173,9 +2173,9 @@ int dsi_update_dynamic_osc_clock(void)
 
 	if (osc_clock_rate) {
 		if (osc_clock_rate == display->panel->oplus_priv.osc_clk_mode0_rate) {
-			rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_OSC_CLK_MODEO0);
+			rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_OSC_CLK_MODEO0, false);
 		} else if (osc_clock_rate == display->panel->oplus_priv.osc_clk_mode1_rate) {
-			rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_OSC_CLK_MODEO1);
+			rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_OSC_CLK_MODEO1, false);
 		} else {
 			LCD_ERR("unsupport osc clk rate=%d\n", osc_clock_rate);
 		}
@@ -2274,10 +2274,10 @@ static ssize_t oplus_display_set_dynamic_osc_clock(struct kobject *obj,
 	}
 
 	if (osc_clk == 139600) {
-		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_OSC_CLK_MODEO0);
+		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_OSC_CLK_MODEO0, false);
 
 	} else {
-		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_OSC_CLK_MODEO1);
+		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_OSC_CLK_MODEO1, false);
 	}
 
 	if (rc) {
