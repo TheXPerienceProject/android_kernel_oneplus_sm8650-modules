@@ -3,6 +3,8 @@ LINUXINCLUDE    += -I$(SYNX_ROOT)/include \
 				   -I$(SYNX_ROOT)/include/uapi/synx/media
 
 ccflags-y += -I$(SYNX_ROOT)/msm/synx/
+# disable false positive due to clang-22
+#ccflags-y += -Wno-uninitialized -Wno-sometimes-uninitialized
 
 # add flag to compile mmrm actual implementatio instead of stub version.
 # to follow up with mmrm team if techpack users need to define this for long term?
