@@ -895,7 +895,7 @@ struct drm_atomic_state *msm_atomic_state_alloc(struct drm_device *dev)
 		 * allocated is reserved, to make the msm_atomic_state_free()
 		 * check guaranteed to be reliable.
 		 */
-		state = kzalloc(offsetof(typeof(*state), crtcs) + 1, GFP_KERNEL);
+		state = kzalloc(sizeof(struct msm_kms_state), GFP_KERNEL);
 		if (!state || drm_atomic_state_init(dev, &state->base) < 0) {
 			kfree(state);
 			return NULL;
