@@ -3358,9 +3358,6 @@ INCS +=		$(COAP_WMI_INC)
 
 ccflags-y += $(INCS)
 
-# Utilize MLGO inliner for output size
-ldflags-y += -mllvm -enable-ml-inliner=release
-
 ccflags-y += -include $(WLAN_ROOT)/configs/default_config.h
 
 # CFG80211_MLO_KEY_OPERATION_SUPPORT
