@@ -3357,7 +3357,9 @@ INCS +=		$(COAP_CORE_INC)
 INCS +=		$(COAP_WMI_INC)
 
 ccflags-y += $(INCS)
-ldflags-y += --lto-O0
+
+# Utilize MLGO inliner for output size
+ldflags-y += -mllvm -enable-ml-inliner=release
 
 ccflags-y += -include $(WLAN_ROOT)/configs/default_config.h
 
