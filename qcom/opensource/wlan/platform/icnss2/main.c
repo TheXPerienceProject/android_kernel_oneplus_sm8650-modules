@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2020, 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt) "icnss2: " fmt
@@ -942,7 +942,7 @@ static int icnss_get_temperature(struct icnss_priv *priv, int *temp)
 	icnss_pr_dbg("Thermal Sensor is %s\n", tsens);
 	thermal_dev = thermal_zone_get_zone_by_name(tsens);
 	if (IS_ERR_OR_NULL(thermal_dev)) {
-		icnss_pr_err("Fail to get thermal zone. ret: %d",
+		icnss_pr_err("Fail to get thermal zone. ret: %ld",
 			     PTR_ERR(thermal_dev));
 		return PTR_ERR(thermal_dev);
 	}
@@ -1805,7 +1805,7 @@ static int icnss_event_soc_wake_release(struct icnss_priv *priv, void *data)
 
 	if (atomic_dec_if_positive(&priv->soc_wake_ref_count)) {
 		icnss_pr_soc_wake("Wake release not called. Ref count: %d",
-				  priv->soc_wake_ref_count);
+				  atomic_read(&priv->soc_wake_ref_count));
 		return 0;
 	}
 
@@ -2022,7 +2022,8 @@ static int icnss_driver_event_early_crash_ind(struct icnss_priv *priv,
 	}
 
 	priv->early_crash_ind = true;
-	icnss_fw_crashed(priv, NULL);
+	if (!test_bit(ICNSS_PD_RESTART, &priv->state))
+		icnss_fw_crashed(priv, NULL);
 
 out:
 	kfree(data);
@@ -2916,7 +2917,7 @@ static void icnss_pdr_notifier_cb(int state, char *service_path, void *priv_cb)
 	if (!priv)
 		return;
 
-	icnss_pr_dbg("PD service notification: 0x%lx state: 0x%lx\n",
+	icnss_pr_dbg("PD service notification: 0x%x state: 0x%lx\n",
 		     state, priv->state);
 
 	switch (state) {
@@ -4143,7 +4144,7 @@ int icnss_smmu_map(struct device *dev,
 	priv->smmu_iova_ipa_current = iova + len;
 	*iova_addr = (uint32_t)(iova + paddr - rounddown(paddr, PAGE_SIZE));
 
-	icnss_pr_dbg("IOVA addr mapped to physical addr %lx\n", *iova_addr);
+	icnss_pr_dbg("IOVA addr mapped to physical addr %x\n", *iova_addr);
 	return 0;
 }
 EXPORT_SYMBOL(icnss_smmu_map);
@@ -4715,7 +4716,7 @@ static int icnss_resource_parse(struct icnss_priv *priv)
 			ret = -ENOMEM;
 			goto put_clk;
 		}
-		icnss_pr_dbg("MSI Addr pa: %pa, iova: 0x%pK\n",
+		icnss_pr_dbg("MSI Addr pa: %pa, iova: 0x%lluK\n",
 			     &priv->msi_addr_pa,
 			     priv->msi_addr_iova);
 
@@ -5411,7 +5412,11 @@ static void icnss_unregister_power_supply_notifier(struct icnss_priv *priv)
 	}
 }
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
 static int icnss_remove(struct platform_device *pdev)
+#else
+static void icnss_remove(struct platform_device *pdev)
+#endif
 {
 	struct icnss_priv *priv = dev_get_drvdata(&pdev->dev);
 
@@ -5484,7 +5489,9 @@ static int icnss_remove(struct platform_device *pdev)
 
 	dev_set_drvdata(&pdev->dev, NULL);
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
 	return 0;
+#endif
 }
 
 void icnss_recovery_timeout_hdlr(struct timer_list *t)
