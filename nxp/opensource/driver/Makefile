@@ -11,5 +11,9 @@ all:
 modules_install:
 	$(MAKE) INSTALL_MOD_STRIP=1 -C $(KERNEL_SRC) M=$(M) modules_install
 
+%:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) $@ $(KBUILD_OPTIONS)
+
 clean:
 	$(MAKE) -C $(KERNEL_SRC) M=$(M) clean
+

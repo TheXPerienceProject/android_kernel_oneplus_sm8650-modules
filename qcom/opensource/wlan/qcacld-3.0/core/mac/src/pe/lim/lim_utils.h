@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -516,17 +516,23 @@ void lim_handle_update_olbc_cache(struct mac_context *mac);
 
 uint8_t lim_is_null_ssid(tSirMacSSid *pSsid);
 
-/* 11h Support */
-void lim_stop_tx_and_switch_channel(struct mac_context *mac, uint8_t sessionId);
+/**
+ * lim_stop_tx_and_switch_channel() - Process channel switch
+ * @mac: pointer to Global MAC structure
+ * @sessionId: PE session Id
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS lim_stop_tx_and_switch_channel(struct mac_context *mac, uint8_t sessionId);
 
 /**
  * lim_process_channel_switch() - Process channel switch
  * @mac: pointer to Global MAC structure
  * @vdev_id: Vdev on which CSA is happening
  *
- * Return: none
+ * Return: QDF_STATUS
  */
-void lim_process_channel_switch(struct mac_context *mac, uint8_t vdev_id);
+QDF_STATUS lim_process_channel_switch(struct mac_context *mac, uint8_t vdev_id);
 
 /**
  * lim_switch_primary_channel() - switch primary channel of session
@@ -581,8 +587,8 @@ bool lim_is_channel_valid_for_channel_switch(struct mac_context *mac,
 QDF_STATUS lim_restore_pre_channel_switch_state(struct mac_context *mac,
 		struct pe_session *pe_session);
 
-void lim_prepare_for11h_channel_switch(struct mac_context *mac,
-		struct pe_session *pe_session);
+QDF_STATUS lim_prepare_for11h_channel_switch(struct mac_context *mac,
+					     struct pe_session *pe_session);
 void lim_switch_channel_cback(struct mac_context *mac, QDF_STATUS status,
 		uint32_t *data, struct pe_session *pe_session);
 
@@ -1053,7 +1059,6 @@ QDF_STATUS lim_send_ies_per_band(struct mac_context *mac_ctx,
 
 /**
  * lim_update_connect_rsn_ie() - Update the connection RSN IE
- * @mac_ctx: MAC context
  * @session: PE session
  * @rsn_ie_buf: RSN IE buffer
  * @pmksa: PMKSA entry for the connecting AP
@@ -1061,8 +1066,7 @@ QDF_STATUS lim_send_ies_per_band(struct mac_context *mac_ctx,
  * Return: None
  */
 void
-lim_update_connect_rsn_ie(struct mac_context *mac_ctx,
-			  struct pe_session *session, uint8_t *rsn_ie_buf,
+lim_update_connect_rsn_ie(struct pe_session *session, uint8_t *rsn_ie_buf,
 			  struct wlan_crypto_pmksa *pmksa);
 
 /**
@@ -1544,7 +1548,7 @@ void lim_update_session_he_capable_chan_switch(struct mac_context *mac,
  * Return: None
  */
 void lim_set_he_caps(struct mac_context *mac, uint8_t *ie_start,
-		     uint32_t num_bytes, uint8_t band);
+		     uint32_t num_bytes, uint8_t band, uint8_t vdev_id);
 
 /**
  * lim_send_he_caps_ie() - gets HE capability and send to firmware via wma
@@ -1779,9 +1783,9 @@ void lim_update_session_he_capable_chan_switch(struct mac_context *mac,
 {
 }
 
-static inline void lim_set_he_caps(struct mac_context *mac, struct pe_session *session,
-				   uint8_t *ie_start, uint32_t num_bytes,
-				   uint8_t band)
+static inline void lim_set_he_caps(struct mac_context *mac, uint8_t *ie_start,
+				   uint32_t num_bytes, uint8_t band,
+				   uint8_t vdev_id)
 {
 }
 

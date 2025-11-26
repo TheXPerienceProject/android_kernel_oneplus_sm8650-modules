@@ -268,6 +268,7 @@ enum dsi_dfps_type {
 	DSI_DFPS_IMMEDIATE_CLK,
 	DSI_DFPS_IMMEDIATE_HFP,
 	DSI_DFPS_IMMEDIATE_VFP,
+	DSI_DFPS_IMMEDIATE_HV_P,
 	DSI_DFPS_MAX
 };
 
@@ -344,6 +345,15 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_POST_TIMING_SWITCH,
 	DSI_CMD_SET_QSYNC_ON,
 	DSI_CMD_SET_QSYNC_OFF,
+#ifdef CAIHONG_DISPLAY_DRIVER
+	DSI_CMD_SET_FPS_SWITCH_120,
+	DSI_CMD_SET_FPS_SWITCH_90,
+	DSI_CMD_SET_FPS_SWITCH_60,
+	DSI_CMD_SET_FPS_SWITCH_50,
+	DSI_CMD_SET_FPS_SWITCH_48,
+	DSI_CMD_SET_FPS_SWITCH_30,
+	DSI_CMD_SET_FPS_SWITCH_144,
+#endif /* CAIHONG_DISPLAY_DRIVER */
 #ifdef OPLUS_FEATURE_DISPLAY_ADFR
 	DSI_CMD_ADFR_AUTO_ON,
 	DSI_CMD_ADFR_AUTO_OFF,
@@ -1118,11 +1128,13 @@ static inline bool dsi_is_type_cphy(struct dsi_host_common_cfg *cfg)
 
 /**
  * dsi_host_transfer_sub() - transfers DSI commands from host to panel
- * @host:    pointer to the DSI mipi host device
- * @cmd:     DSI command to be transferred
+ * @host:                pointer to the DSI mipi host device
+ * @cmd:                 DSI command to be transferred
+ * @do_peripheral_flush: Flag for sending this command with peripheral flush
  *
  * Return: error code.
  */
-int dsi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd);
+int dsi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd,
+			  bool do_peripheral_flush);
 
 #endif /* _DSI_DEFS_H_ */

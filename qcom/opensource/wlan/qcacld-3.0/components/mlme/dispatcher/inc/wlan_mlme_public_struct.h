@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -747,6 +747,7 @@ struct wlan_mlme_wps_params {
  * @is_6g_sap_fd_enabled: enable fils discovery on sap
  * @disable_bcn_prot: disable beacon protection for sap
  * @sap_ps_with_twt_enable: SAP power save with TWT
+ * @sap_he_rx_mcs_map_160: SAP HE rx mcs map 160 config
  */
 struct wlan_mlme_cfg_sap {
 	uint16_t beacon_interval;
@@ -784,6 +785,7 @@ struct wlan_mlme_cfg_sap {
 	bool is_6g_sap_fd_enabled;
 	bool disable_bcn_prot;
 	bool sap_ps_with_twt_enable;
+	uint16_t sap_he_rx_mcs_map_160;
 };
 
 /**
@@ -797,6 +799,7 @@ struct wlan_mlme_cfg_sap {
  * @dfs_disable_japan_w53: Disable W53 channels
  * @sap_tx_leakage_threshold: sap tx leakage threshold
  * @dfs_pri_multiplier: dfs_pri_multiplier for handle missing pulses
+ * @dfs_discard_mode: Modes for which DFS channels need to discard
  */
 struct wlan_mlme_dfs_cfg {
 	bool dfs_master_capable;
@@ -808,6 +811,7 @@ struct wlan_mlme_dfs_cfg {
 	bool dfs_disable_japan_w53;
 	uint32_t sap_tx_leakage_threshold;
 	uint32_t dfs_pri_multiplier;
+	uint8_t dfs_discard_mode;
 };
 
 /**

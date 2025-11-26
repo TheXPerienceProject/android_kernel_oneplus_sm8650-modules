@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -87,6 +87,7 @@
 #include "wlan_mlo_mgr_link_switch.h"
 #include "wlan_epcs_api.h"
 #include "wlan_nan_api_i.h"
+#include "wlan_mlme_api.h"
 
 /** -------------------------------------------------------------
    \fn lim_delete_dialogue_token_list
@@ -1957,15 +1958,15 @@ void lim_disconnect_complete(struct pe_session *session, bool del_bss)
 		lim_send_stop_bss_failure_resp(mac, session);
 }
 
-void lim_process_channel_switch(struct mac_context *mac_ctx, uint8_t vdev_id)
+QDF_STATUS lim_process_channel_switch(struct mac_context *mac_ctx, uint8_t vdev_id)
 {
 	struct pe_session *session_entry;
-	QDF_STATUS status;
+	QDF_STATUS status = QDF_STATUS_E_INVAL;
 
 	session_entry = pe_find_session_by_vdev_id(mac_ctx, vdev_id);
 	if (!session_entry) {
 		pe_err("Session does not exist for given vdev_id %d", vdev_id);
-		return;
+		return status;
 	}
 
 	session_entry->channelChangeReasonCode = LIM_SWITCH_CHANNEL_OPERATION;
@@ -1977,6 +1978,8 @@ void lim_process_channel_switch(struct mac_context *mac_ctx, uint8_t vdev_id)
 					session_entry);
 	if (QDF_IS_STATUS_ERROR(status))
 		mlme_set_chan_switch_in_progress(session_entry->vdev, false);
+
+	return status;
 }
 
 /** ------------------------------------------------------------------------ **/
@@ -4352,19 +4355,23 @@ lim_restore_pre_channel_switch_state(struct mac_context *mac, struct pe_session 
  *
  * @param  mac - Pointer to Global MAC structure
  * @param  pe_session
- * @return None
+ * @return QDF_STATUS
  */
-void
+QDF_STATUS
 lim_prepare_for11h_channel_switch(struct mac_context *mac, struct pe_session *pe_session)
 {
+	QDF_STATUS status;
+
 	if (!LIM_IS_STA_ROLE(pe_session))
-		return;
+		return QDF_STATUS_E_INVAL;
 
 	/* Flag to indicate 11h channel switch in progress */
 	pe_session->gLimSpecMgmt.dot11hChanSwState = eLIM_11H_CHANSW_RUNNING;
 
 	/** We are safe to switch channel at this point */
-	lim_stop_tx_and_switch_channel(mac, pe_session->peSessionId);
+	status = lim_stop_tx_and_switch_channel(mac, pe_session->peSessionId);
+
+	return status;
 }
 
 tSirNwType lim_get_nw_type(struct mac_context *mac, uint32_t chan_freq, uint32_t type,
@@ -6201,7 +6208,7 @@ QDF_STATUS lim_send_ext_cap_ie(struct mac_context *mac_ctx,
 		vht_enabled = true;
 
 	status = populate_dot11f_ext_cap(mac_ctx, vht_enabled, &ext_cap_data,
-					 NULL);
+					 vdev_id);
 	if (QDF_STATUS_SUCCESS != status) {
 		pe_err("Failed to populate ext cap IE");
 		return QDF_STATUS_E_FAILURE;
@@ -7439,12 +7446,14 @@ void lim_decide_he_op(struct mac_context *mac_ctx, uint32_t *mlme_he_ops,
 
 void lim_update_he_caps_mcs(struct mac_context *mac, struct pe_session *session)
 {
-	uint32_t tx_mcs_map = 0;
-	uint32_t rx_mcs_map = 0;
-	uint32_t mcs_map = 0;
+	uint16_t tx_mcs_map = 0;
+	uint16_t rx_mcs_map = 0;
+	uint16_t mcs_map = 0;
 	struct wlan_objmgr_vdev *vdev = session->vdev;
 	struct mlme_legacy_priv *mlme_priv;
 	struct wlan_mlme_cfg *mlme_cfg = mac->mlme_cfg;
+	enum QDF_OPMODE persona;
+	uint16_t sap_rx_mcs_map;
 
 	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
 	if (!mlme_priv)
@@ -7464,12 +7473,32 @@ void lim_update_he_caps_mcs(struct mac_context *mac, struct pe_session *session)
 
 	mlme_priv->he_config.tx_he_mcs_map_lt_80 = tx_mcs_map;
 	mlme_priv->he_config.rx_he_mcs_map_lt_80 = rx_mcs_map;
-	*((uint16_t *)mlme_priv->he_config.tx_he_mcs_map_160) = tx_mcs_map;
-	*((uint16_t *)mlme_priv->he_config.rx_he_mcs_map_160) = rx_mcs_map;
+
+	rx_mcs_map = *(uint16_t *)mlme_cfg->he_caps.dot11_he_cap.rx_he_mcs_map_160;
+	tx_mcs_map = *(uint16_t *)mlme_cfg->he_caps.dot11_he_cap.tx_he_mcs_map_160;
+	mcs_map = rx_mcs_map & 0x3;
+
+	if (session->nss == 1) {
+		tx_mcs_map = HE_SET_MCS_4_NSS(tx_mcs_map, HE_MCS_DISABLE, 2);
+		rx_mcs_map = HE_SET_MCS_4_NSS(rx_mcs_map, HE_MCS_DISABLE, 2);
+	} else {
+		tx_mcs_map = HE_SET_MCS_4_NSS(tx_mcs_map, mcs_map, 2);
+		rx_mcs_map = HE_SET_MCS_4_NSS(rx_mcs_map, mcs_map, 2);
+	}
+
+	persona = wlan_vdev_mlme_get_opmode(vdev);
+	if (persona == QDF_SAP_MODE) {
+		sap_rx_mcs_map =
+			wlan_mlme_get_sap_he_rx_mcs_map_160(mac->psoc);
+		rx_mcs_map =
+			wlan_mlme_get_min_he_mcs_map(sap_rx_mcs_map,
+						     rx_mcs_map);
+	}
+
 	qdf_mem_copy(mlme_priv->he_config.tx_he_mcs_map_160, &tx_mcs_map,
-		     sizeof(u_int16_t));
+		     sizeof(uint16_t));
 	qdf_mem_copy(mlme_priv->he_config.rx_he_mcs_map_160, &rx_mcs_map,
-		     sizeof(u_int16_t));
+		     sizeof(uint16_t));
 }
 
 static void
@@ -7831,7 +7860,7 @@ void lim_update_session_he_capable_chan_switch(struct mac_context *mac,
 }
 
 void lim_set_he_caps(struct mac_context *mac, uint8_t *ie_start,
-		     uint32_t num_bytes, uint8_t band)
+		     uint32_t num_bytes, uint8_t band, uint8_t vdev_id)
 {
 	const uint8_t *ie = NULL;
 	tDot11fIEhe_cap dot11_cap;
@@ -7841,8 +7870,8 @@ void lim_set_he_caps(struct mac_context *mac, uint8_t *ie_start,
 	if (band == CDS_BAND_2GHZ)
 		is_band_2g = true;
 
-	populate_dot11f_he_caps_by_band(mac, is_band_2g, &dot11_cap,
-					NULL);
+	populate_dot11f_he_caps_by_band(mac, is_band_2g, &dot11_cap, vdev_id);
+
 	lim_log_he_cap(mac, &dot11_cap);
 	ie = wlan_get_ext_ie_ptr_from_ext_id(HE_CAP_OUI_TYPE,
 			HE_CAP_OUI_SIZE, ie_start, num_bytes);
@@ -8048,7 +8077,7 @@ QDF_STATUS lim_send_he_caps_ie(struct mac_context *mac_ctx,
 	he_caps[1] = SIR_MAC_HE_CAP_MIN_LEN;
 	qdf_mem_copy(&he_caps[2], HE_CAP_OUI_TYPE, HE_CAP_OUI_SIZE);
 	lim_set_he_caps(mac_ctx, he_caps, he_cap_total_len,
-			CDS_BAND_5GHZ);
+			CDS_BAND_5GHZ, vdev_id);
 	he_cap = (struct he_capability_info *) (&he_caps[2 + HE_CAP_OUI_SIZE]);
 
 	nan_beamforming_supported =
@@ -8114,7 +8143,7 @@ QDF_STATUS lim_send_he_caps_ie(struct mac_context *mac_ctx,
 	he_caps[1] = SIR_MAC_HE_CAP_MIN_LEN;
 	qdf_mem_copy(&he_caps[2], HE_CAP_OUI_TYPE, HE_CAP_OUI_SIZE);
 	lim_set_he_caps(mac_ctx, he_caps, he_cap_total_len,
-			CDS_BAND_2GHZ);
+			CDS_BAND_2GHZ, vdev_id);
 	he_cap = (struct he_capability_info *)(&he_caps[2 + HE_CAP_OUI_SIZE]);
 
 	/*
@@ -8209,6 +8238,7 @@ QDF_STATUS lim_populate_he_mcs_set(struct mac_context *mac_ctx,
 {
 	bool support_2x2 = false;
 	uint32_t self_sta_dot11mode = mac_ctx->mlme_cfg->dot11_mode.dot11_mode;
+	uint16_t sap_rx_he_mcs_map_160;
 
 	if (!IS_DOT11_MODE_HE(self_sta_dot11mode))
 		return QDF_STATUS_SUCCESS;
@@ -8275,6 +8305,15 @@ QDF_STATUS lim_populate_he_mcs_set(struct mac_context *mac_ctx,
 				rx_he_mcs_map_160),
 			*((uint16_t *)mac_ctx->mlme_cfg->he_caps.dot11_he_cap.
 					tx_he_mcs_map_160));
+
+		if (LIM_IS_AP_ROLE(session_entry)) {
+			sap_rx_he_mcs_map_160 =
+				wlan_mlme_get_sap_he_rx_mcs_map_160(mac_ctx->psoc);
+			rates->rx_he_mcs_map_160 =
+				wlan_mlme_get_min_he_mcs_map(sap_rx_he_mcs_map_160,
+							     rates->rx_he_mcs_map_160);
+		}
+
 	} else {
 		rates->tx_he_mcs_map_160 = HE_MCS_ALL_DISABLED;
 		rates->rx_he_mcs_map_160 = HE_MCS_ALL_DISABLED;
@@ -9084,7 +9123,8 @@ void lim_set_eht_caps(struct mac_context *mac,
 	populate_dot11f_eht_caps_by_band(mac, is_band_2g, &dot11_cap, NULL);
 	lim_revise_eht_caps_per_band(mac, band, &dot11_cap);
 	populate_dot11f_he_caps_by_band(mac, is_band_2g, &dot11_he_cap,
-					NULL);
+					vdev_id);
+
 	lim_log_eht_cap(mac, &dot11_cap);
 
 	if (is_band_2g) {

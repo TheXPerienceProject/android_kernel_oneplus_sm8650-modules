@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -98,6 +98,7 @@
 #define CDP_DP_RX_FISA_STATS	   26
 #define CDP_DP_SWLM_STATS	   27
 #define CDP_DP_TX_HW_LATENCY_STATS 28
+#define CDP_TXRX_SOC_STATS	   30
 
 #define WME_AC_TO_TID(_ac) (       \
 		((_ac) == WME_AC_VO) ? 6 : \
@@ -1980,7 +1981,6 @@ typedef void (*data_stall_detect_cb)(struct data_stall_event_info *);
  * @CDP_TXRX_STATS_30: Host Pdev config params info
  * @CDP_TXRX_STATS_31: Host DP Interrupt Stats
  * @CDP_TXRX_STATS_HTT_MAX:
- * @CDP_TXRX_SOC_STATS:
  * @CDP_TXRX_MAX_STATS:
  */
 enum cdp_stats {
@@ -2017,7 +2017,6 @@ enum cdp_stats {
 	CDP_TXRX_STATS_30,
 	CDP_TXRX_STATS_31,
 	CDP_TXRX_STATS_HTT_MAX = 256,
-	CDP_TXRX_SOC_STATS = 264,
 	CDP_TXRX_MAX_STATS = 265,
 };
 
