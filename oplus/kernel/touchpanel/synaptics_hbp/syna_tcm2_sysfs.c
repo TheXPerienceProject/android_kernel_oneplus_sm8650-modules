@@ -208,6 +208,9 @@ static int g_sysfs_has_remove = 0;
 
 void syna_cdev_update_doze_state_report_queue(struct syna_tcm *tcm);
 
+/* Global wait queue for power state transitions. */
+static DECLARE_WAIT_QUEUE_HEAD(g_pwr_state_wq);
+
 /* a buffer to record the streaming report
  * considering touch report and another reports may be co-enabled
  * at the same time, give a little buffer here (3 sec x 300 fps)
@@ -222,16 +225,21 @@ void syna_cdev_update_doze_state_report_queue(struct syna_tcm *tcm);
 #define MINIMUM_WAITING_TIME			(10)
 
 #define SYNA_RETRY_CNT 60
+
+#define SUB_PWR_SUSPEND_WAIT_MS_DEFAULT   150
+#define SUB_PWR_SUSPEND_WAIT_MS_SHORT      60
+#define SUB_PWR_RESUME_WAIT_MS_DEFAULT    100
+#define SUB_PWR_RESUME_WAIT_MS_SHORT       40
 /* Define a data structure that contains a list_head */
 struct fifo_queue {
 	struct list_head next;
-	unsigned char *fifo_data;
 	unsigned int data_length;
 #ifdef REPLACE_KTIME
 	struct timespec64 timestamp;
 #else
 	struct timeval timestamp;
 #endif
+	unsigned char fifo_data[];
 };
 
 /* Define a data structure for driver parameters configurations
@@ -717,6 +725,7 @@ static ssize_t syna_sysfs_gesture_coordinate_show(struct kobject *kobj,
 	struct Coordinate Point_2nd;
 	struct Coordinate Point_3rd;
 	struct Coordinate Point_4th;
+	struct Coordinate points_array[6] = {{0}};
 
 	p_kobj = g_sysfs_dir->parent;
 	p_dev = container_of(p_kobj, struct device, kobj);
@@ -725,12 +734,12 @@ static ssize_t syna_sysfs_gesture_coordinate_show(struct kobject *kobj,
 
 	syna_pal_mutex_lock(&tcm->extif_mutex);
 
-	memset(&Point_start, 0, sizeof(struct Coordinate));
-	memset(&Point_end, 0, sizeof(struct Coordinate));
-	memset(&Point_1st, 0, sizeof(struct Coordinate));
-	memset(&Point_2nd, 0, sizeof(struct Coordinate));
-	memset(&Point_3rd, 0, sizeof(struct Coordinate));
-	memset(&Point_4th, 0, sizeof(struct Coordinate));
+	Point_start = points_array[0];
+	Point_end = points_array[1];
+	Point_1st = points_array[2];
+	Point_2nd = points_array[3];
+	Point_3rd = points_array[4];
+	Point_4th = points_array[5];
 
 	switch (touch_data->gesture_id) {
 	case DTAP_DETECT:
@@ -954,7 +963,7 @@ static ssize_t syna_sysfs_high_rate_show(struct device *device,
         if (retval < 0)
                 return scnprintf(buf, PAGE_SIZE, "0\n");
 
-        return scnprintf(buf, PAGE_SIZE, "%d\n", config == 3);
+        return scnprintf(buf, PAGE_SIZE, "%d\n", config == 1);
 }
 
 static ssize_t syna_sysfs_high_rate_write(struct device *device,
@@ -971,7 +980,7 @@ static ssize_t syna_sysfs_high_rate_write(struct device *device,
                 return -EINVAL;
 
         if (val == 1)
-                retval = syna_tcm_set_dynamic_config(tcm->tcm_dev, 0xE6, 3, RESP_IN_ATTN);
+                retval = syna_tcm_set_dynamic_config(tcm->tcm_dev, 0xE6, 1, RESP_IN_ATTN);
         else if (val == 0)
                 retval = syna_tcm_set_dynamic_config(tcm->tcm_dev, 0xE6, 2, RESP_IN_ATTN);
         else
@@ -1061,30 +1070,26 @@ static ssize_t syna_sysfs_fingerprint_trigger_store(struct kobject *kobj,
 		return count;
 	}
 
-	syna_pal_mutex_lock(&tcm->extif_mutex);
-
-	if (sscanf(buf, "%d,%d,%d", &is_down, &x_pos, &y_pos)) {
-		if(is_down) {
-			tcm->fp_info.area_rate = 100;
-			tcm->fp_info.x = x_pos;
-			tcm->fp_info.y = y_pos;
-			tcm->fp_info.touch_state = 1;
-			tcm->is_fp_down = true;
-			touch_call_notifier_fp(tcm, &tcm->fp_info);
-			LOGE("screen on fingerprint down : (%d, %d)\n", tcm->fp_info.x, tcm->fp_info.y);
-			tp_healthinfo_report(&tcm->monitor_data, HEALTH_REPORT, "screen_on_fp_down");
-		} else {
-			tcm->fp_info.touch_state = 0;
-			tcm->is_fp_down = false;
-			touch_call_notifier_fp(tcm, &tcm->fp_info);
-			LOGE("screen on fingerprint up : (%d, %d)\n", tcm->fp_info.x, tcm->fp_info.y);
-			tp_healthinfo_report(&tcm->monitor_data, HEALTH_REPORT, "screen_on_fp_up");
-		}
-	} else {
+	if (sscanf(buf, "%d,%d,%d", &is_down, &x_pos, &y_pos) != 3) {
 		LOGE("invalid content: '%s', length = %zd\n", buf, count);
+		return -EINVAL;
 	}
 
+	syna_pal_mutex_lock(&tcm->extif_mutex);
+	if(is_down) {
+		tcm->fp_info.area_rate = 100;
+		tcm->fp_info.x = x_pos;
+		tcm->fp_info.y = y_pos;
+		tcm->fp_info.touch_state = 1;
+		tcm->is_fp_down = true;
+	} else {
+		tcm->fp_info.touch_state = 0;
+		tcm->is_fp_down = false;
+	}
 	syna_pal_mutex_unlock(&tcm->extif_mutex);
+
+	touch_call_notifier_fp(tcm, &tcm->fp_info);
+
 	return count;
 }
 
@@ -1248,11 +1253,8 @@ static int syna_cdev_insert_fifo(struct syna_tcm *tcm,
 				tcm->fifo_remaining_frame);
 
 		pfifo_data_temp = list_first_entry(&tcm->frame_fifo_queue,
-						struct fifo_queue, next);
-
+						   struct fifo_queue, next);
 		list_del(&pfifo_data_temp->next);
-		kfree(pfifo_data_temp->fifo_data);
-		mb();/* memory barrier */
 		kfree(pfifo_data_temp);
 		pre_remaining_frames = tcm->fifo_remaining_frame;
 		tcm->fifo_remaining_frame--;
@@ -1265,17 +1267,12 @@ static int syna_cdev_insert_fifo(struct syna_tcm *tcm,
 		pre_remaining_frames = tcm->fifo_remaining_frame;
 	}
 
-	pfifo_data = kmalloc(sizeof(*pfifo_data), GFP_KERNEL);
+	pfifo_data = kmalloc(struct_size(pfifo_data, fifo_data, length),
+			     GFP_KERNEL);
 	if (!(pfifo_data)) {
 		LOGE("Failed to allocate memory\n");
-		LOGE("Allocation size = %zu\n", (sizeof(*pfifo_data)));
-		retval = -ENOMEM;
-		goto exit;
-	}
-
-	pfifo_data->fifo_data = kmalloc(length, GFP_KERNEL);
-	if (!(pfifo_data->fifo_data)) {
-		LOGE("Failed to allocate memory, size = %d\n", length);
+		LOGE("Allocation size = %zu\n",
+		     struct_size(pfifo_data, fifo_data, length));
 		retval = -ENOMEM;
 		goto exit;
 	}
@@ -1502,11 +1499,12 @@ static int syna_cdev_ioctl_check_frame(struct syna_tcm *tcm,
 	timeout = syna_pal_le4_to_uint(&data[0]);
 	LOGD("Time out: %d\n", timeout);
 
+/*
 	if (tcm->use_short_frame_waiting != 0) {
 		timeout = MINIMUM_WAITING_TIME;
 		LOGE("Updated the frame waiting to %dms\n", timeout);
 	}
-
+*/
 	if (list_empty(&tcm->frame_fifo_queue)) {
 		LOGD("The queue is empty, wait for the frames\n");
 		result = wait_event_interruptible_timeout(tcm->wait_frame,
@@ -1569,8 +1567,6 @@ static void syna_cdev_clean_queue(struct syna_tcm *tcm)
 			break;
 		}
 		list_del(&pfifo_data->next);
-		kfree(pfifo_data->fifo_data);
-		mb();/* memory barrier */
 		kfree(pfifo_data);
 		if (tcm->fifo_remaining_frame != 0)
 			tcm->fifo_remaining_frame--;
@@ -1636,11 +1632,12 @@ static int syna_cdev_ioctl_get_frame(struct syna_tcm *tcm,
 	timeout = syna_pal_le4_to_uint(&timeout_data[0]);
 	LOGD("Wait time: %dms\n", timeout);
 
+/*
 	if (tcm->use_short_frame_waiting != 0) {
 		timeout = MINIMUM_WAITING_TIME;
 		LOGE("Updated the frame waiting to %dms\n", timeout);
 	}
-
+*/
 	if (list_empty(&tcm->frame_fifo_queue)) {
 		LOGD("The queue is empty, wait for the frame\n");
 		retval = wait_event_interruptible_timeout(tcm->wait_frame,
@@ -1700,8 +1697,6 @@ static int syna_cdev_ioctl_get_frame(struct syna_tcm *tcm,
 	if (retval >= 0)
 		retval = pfifo_data->data_length;
 
-	kfree(pfifo_data->fifo_data);
-	mb();/* memory barrier */
 	kfree(pfifo_data);
 	if (tcm->fifo_remaining_frame != 0)
 		tcm->fifo_remaining_frame--;
@@ -1793,7 +1788,8 @@ static int syna_sysfs_set_fingerprint_prepare(struct syna_tcm *tcm)
 {
 	int retval = 0;
 	struct syna_hw_interface *hw_if = tcm->hw_if;
-	int retryCnt = 0;
+	long timeout_jiffies;
+	unsigned int wait_ms;
 
 	/* update tcm->lpwg_enabled */
 	syna_dev_update_lpwg_status(tcm);
@@ -1801,20 +1797,19 @@ static int syna_sysfs_set_fingerprint_prepare(struct syna_tcm *tcm)
 	if((tcm->sub_pwr_state == SUB_PWR_RESUME_DONE) && (tcm->pwr_state == PWR_ON)) {
 		//screen on
 		goto exit;
-	}else if (tcm->sub_pwr_state >= SUB_PWR_EARLY_SUSPENDING) {
-		//screen off
-		if(tcm->sub_pwr_state < SUB_PWR_SUSPEND_DONE) {
-			/* wait the early suspend and suspend */
-			retryCnt = SYNA_RETRY_CNT;
-retry:
-			syna_pal_sleep_ms(5);
-			retryCnt--;
-			if ((tcm->sub_pwr_state < SUB_PWR_SUSPEND_DONE) && (retryCnt > 0))
-				goto retry;
+	} else if (tcm->sub_pwr_state >= SUB_PWR_EARLY_SUSPENDING) {
+		if (tcm->sub_pwr_state < SUB_PWR_SUSPEND_DONE) {
+			if (tcm->use_short_frame_waiting)
+				wait_ms = SUB_PWR_SUSPEND_WAIT_MS_SHORT;
+			else
+				wait_ms = SUB_PWR_SUSPEND_WAIT_MS_DEFAULT;
 
-			if(retryCnt <= 0) {
-				LOGE("retryCnt is too small, Please Incress the retryCnt\n");
-				goto exit;
+			timeout_jiffies = msecs_to_jiffies(wait_ms);
+
+			if (!wait_event_timeout(g_pwr_state_wq,
+						tcm->sub_pwr_state >= SUB_PWR_SUSPEND_DONE,
+						timeout_jiffies)) {
+				LOGE("wait suspend done timed out\n");
 			}
 		}
 
@@ -1851,11 +1846,14 @@ retry:
 	}
 
 exit:
-	if(tcm->sub_pwr_state == SUB_PWR_SUSPEND_DONE) {
-		/* enable the report to queue */
+	if (tcm->sub_pwr_state == SUB_PWR_SUSPEND_DONE) {
+		/* enable the report to queue, but fingerprint usage only */
 		syna_cdev_clean_queue(tcm);
-		/*syna_pal_mem_set(tcm->report_to_queue, EFP_ENABLE, (STATUS_ERROR + 1));*/
-		LOGE("enable response to report_to_queue for touch_and_hold\n");
+		syna_pal_mem_set(tcm->report_to_queue, EFP_DISABLE, REPORT_TYPES);
+		tcm->report_to_queue[REPORT_HBP_ACTIVE_FRAME]   = EFP_ENABLE;
+		tcm->report_to_queue[REPORT_POWER_STATE_INFO]   = EFP_ENABLE;
+
+		LOGE("enable REPORT_HBP_ACTIVE_FRAME in report_to_queue for fod\\n");
 		tcm->hbp_enabled = true;
 	}
 	return retval;
@@ -1889,7 +1887,7 @@ static int syna_sysfs_set_fingerprint_post(struct syna_tcm *tcm)
 	} else if (tcm->sub_pwr_state == SUB_PWR_SUSPEND_DONE){
 		/* do not fill any report/response to queue */
 		LOGE("Disable all Report and response to report_to_queue\n");
-		/*syna_pal_mem_set(tcm->report_to_queue, EFP_DISABLE, REPORT_TYPES);*/
+		syna_pal_mem_set(tcm->report_to_queue, EFP_DISABLE, REPORT_TYPES);
 		tcm->hbp_enabled = false;
 
 		//screen off
@@ -1949,7 +1947,8 @@ static int syna_cdev_ioctl_send_message(struct syna_tcm *tcm,
 		unsigned int *msg_size)
 {
 	int retval = 0;
-	int retryCnt = 0;
+	long timeout_jiffies;
+	unsigned int wait_ms;
 	unsigned char *data = NULL;
 	unsigned char resp_code = 0;
 	unsigned int payload_length = 0;
@@ -1973,36 +1972,38 @@ static int syna_cdev_ioctl_send_message(struct syna_tcm *tcm,
 	}
 
 	if (tcm->sub_pwr_state >= SUB_PWR_EARLY_SUSPENDING) {
-		//screen off
-		if(tcm->sub_pwr_state < SUB_PWR_SUSPEND_DONE) {
-			/* wait the early suspend and suspend */
-			retryCnt = SYNA_RETRY_CNT;
-retry:
-			syna_pal_sleep_ms(5);
-			retryCnt--;
-			if ((tcm->sub_pwr_state >= SUB_PWR_EARLY_SUSPENDING)
-					   && (tcm->sub_pwr_state < SUB_PWR_SUSPEND_DONE) && (retryCnt > 0))
-				goto retry;
+		if (tcm->sub_pwr_state < SUB_PWR_SUSPEND_DONE) {
+			if (tcm->use_short_frame_waiting)
+				wait_ms = SUB_PWR_SUSPEND_WAIT_MS_SHORT;
+			else
+				wait_ms = SUB_PWR_SUSPEND_WAIT_MS_DEFAULT;
 
-			if(retryCnt <= 0) {
-				LOGE("retryCnt is too small, Please Incress the retryCnt\n");
+			timeout_jiffies = msecs_to_jiffies(wait_ms);
+
+			if (!wait_event_timeout(g_pwr_state_wq,
+						tcm->sub_pwr_state >= SUB_PWR_SUSPEND_DONE,
+						timeout_jiffies)) {
+				LOGE("wait suspend done timed out in send_message\n");
+				if (IS_REMOVE == tcm->driver_current_state) {
+					LOGE("%s:driver is remove!!\n", __func__);
+					return -EINVAL;
+				}
 			}
-			if (IS_REMOVE == tcm->driver_current_state) {
-				LOGE("%s:driver is remove!!\n", __func__);
-				return -EINVAL;
-			};
 		}
 	}
 
-	retryCnt = 0;
 	if ((tcm->is_fp_down == true) && (tcm->sub_pwr_state != SUB_PWR_RESUME_DONE)) {
-		while (tcm->sub_pwr_state != SUB_PWR_RESUME_DONE) {
-			syna_pal_sleep_ms(20);
-			retryCnt += 1;
-			if (retryCnt > 5) {
-				LOGE("%s:Wait resume time out..\n", __func__);
-				break;
-			}
+		if (tcm->use_short_frame_waiting)
+			wait_ms = SUB_PWR_RESUME_WAIT_MS_SHORT;
+		else
+			wait_ms = SUB_PWR_RESUME_WAIT_MS_DEFAULT;
+
+		timeout_jiffies = msecs_to_jiffies(wait_ms);
+
+		if (!wait_event_timeout(g_pwr_state_wq,
+					tcm->sub_pwr_state == SUB_PWR_RESUME_DONE,
+					timeout_jiffies)) {
+			LOGE("%s:Wait resume time out..\n", __func__);
 		}
 	}
 
@@ -2129,7 +2130,7 @@ retry:
      * queued if the user doesn't set the report/response types through
      * syna_cdev_ioctl_set_reports.
      */
-	if (delay_ms_resp != RESP_IN_ATTN) {
+	if ((delay_ms_resp != RESP_IN_ATTN) && tcm->hbp_enabled) {
 		if (tcm->report_to_queue[resp_code] == EFP_ENABLE) {
 			syna_cdev_update_report_queue(tcm, resp_code,
 				&resp_data_buf);
@@ -3497,11 +3498,12 @@ void syna_cdev_update_report_queue(struct syna_tcm *tcm,
 		unsigned char code, struct tcm_buffer *pevent_data)
 {
 	int retval;
-	unsigned char *frame_buffer = NULL;
 	unsigned int size = 0;
 	unsigned short val;
 	unsigned char *extrabytes = NULL;
 	unsigned char *extraptr = NULL;
+	unsigned char header[3];
+	unsigned char *frame_buffer = NULL;
 	const int header_size = 3;
 
 	if (pevent_data == NULL) {
@@ -3516,43 +3518,30 @@ void syna_cdev_update_report_queue(struct syna_tcm *tcm,
 	LOGD("Length of queuing data = %d\n", pevent_data->data_length);
 	LOGD("Total size = %d\n", size);
 
-	frame_buffer = (unsigned char *)syna_pal_mem_alloc(size,
-					sizeof(unsigned char));
-	if (!frame_buffer) {
-		LOGE("Fail to allocate buffer, size: %d, data_length: %d\n",
-			size, pevent_data->data_length);
-		return;
-	}
-
 	if (g_sysfs_extra_bytes_read > 0) {
 		extrabytes = (unsigned char *)syna_pal_mem_alloc(
 					g_sysfs_extra_bytes_read,
 					sizeof(unsigned char));
 		if (!extrabytes) {
-			syna_pal_mem_free((void *)frame_buffer);
-
 			LOGE("Fail to allocate extra buffer, size: %d\n",
 				g_sysfs_extra_bytes_read);
 			return;
 		}
 	}
 
-	frame_buffer[0] = code;
-	frame_buffer[1] = (unsigned char)pevent_data->data_length;
-	frame_buffer[2] = (unsigned char)(pevent_data->data_length >> 8);
+	header[0] = code;
+	header[1] = (unsigned char)pevent_data->data_length;
+	header[2] = (unsigned char)(pevent_data->data_length >> 8);
 
-	if (pevent_data->data_length > 0) {
-		retval = syna_pal_mem_cpy(&frame_buffer[header_size],
-				(size - header_size),
-				pevent_data->buf,
-				pevent_data->data_length,
-				pevent_data->data_length);
-		if (retval < 0) {
-			LOGE("Fail to copy data to buffer, size: %d\n",
-				pevent_data->data_length);
-			goto exit;
-		}
-	}
+	frame_buffer =
+		(unsigned char *)syna_pal_mem_alloc(size, sizeof(unsigned char));
+	if (!frame_buffer)
+		goto exit;
+
+	memcpy(frame_buffer, header, header_size);
+	if (pevent_data->data_length > 0)
+		memcpy(&frame_buffer[header_size], pevent_data->buf,
+		       pevent_data->data_length);
 
 	if (g_sysfs_extra_bytes_read >= TCM_MSG_CRC_LENGTH) {
 		val = syna_tcm_get_message_crc(tcm->tcm_dev);
@@ -3585,7 +3574,6 @@ void syna_cdev_update_report_queue(struct syna_tcm *tcm,
 
 exit:
 	syna_pal_mem_free((void *)extrabytes);
-
 	syna_pal_mem_free((void *)frame_buffer);
 }
 
@@ -3651,10 +3639,10 @@ void syna_cdev_update_power_state_report_queue(struct syna_tcm *tcm, bool wakeup
 		goto exit;
 	}
 
-	if(wakeup)
-	{
+	wake_up_all(&g_pwr_state_wq);
+
+	if (wakeup)
 		wake_up_interruptible(&(tcm->wait_frame));
-	}
 
 exit:
 	syna_pal_mem_free((void *)frame_buffer);
@@ -3719,6 +3707,8 @@ void syna_cdev_update_doze_state_report_queue(struct syna_tcm *tcm)
 		LOGE("Fail to insert the report data to fifo\n");
 		goto exit;
 	}
+
+	wake_up_all(&g_pwr_state_wq);
 	wake_up_interruptible(&(tcm->wait_frame));
 exit:
 	syna_pal_mem_free((void *)frame_buffer);
