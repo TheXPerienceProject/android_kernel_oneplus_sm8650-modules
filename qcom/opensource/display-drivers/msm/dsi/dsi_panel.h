@@ -97,6 +97,7 @@ enum PWM_STATE {
 
 #define DSI_CMD_PPS_HDR_SIZE 7
 #define DSI_MODE_MAX 32
+#define PANEL_REGS_CHECK_NUM_MAX 64
 
 #define INTO_OUT_AOD_INTERVOL (45*1000)
 /*
@@ -268,6 +269,7 @@ struct dsi_panel_oplus_privite {
 	int bl_demura_mode;
 	bool vid_timming_switch_enabled;
 	bool vid_timming_switch_post_enabled;
+	bool vid_fps_switch_compenstate_enable;
 	bool dimming_setting_before_bl_0_enable;
 	bool vidmode_backlight_async_wait_enable;
 	bool set_backlight_not_do_esd_reg_read_enable;
@@ -276,6 +278,7 @@ struct dsi_panel_oplus_privite {
 	"0" means once aod off cmd sent the next frame will be normal frame */
 	unsigned int aod_off_frame_cost;
 	bool dozedisable_esdcheck_delay;
+	bool doze_disable_esdcheck;
 
 	/* add for factory test fps switch, ignore some fps */
 	int ignore_mode_count;
@@ -529,10 +532,10 @@ struct dsi_panel {
 	u32 last_refresh_rate;
 	u32 work_frame;
 	bool bl_ic_ktz8866_used;
+	bool is_secondary;
 #endif /* OPLUS_FEATURE_DISPLAY */
 
 #if defined(CONFIG_PXLW_IRIS)
-	bool is_secondary;
 	int hbm_mode;
 	u32 qsync_mode;
 #endif
