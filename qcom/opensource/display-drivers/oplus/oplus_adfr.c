@@ -1034,9 +1034,11 @@ int oplus_adfr_property_update(void *sde_connector, void *sde_connector_state, i
 
 	p_oplus_adfr_params->sa_min_fps = 1;
 	p_oplus_adfr_params->sa_min_fps_updated = true;
-	prop_val  = OPLUS_ADFR_SA_MAGIC
-		| OPLUS_ADFR_SA_MIN_FPS_MAGIC
-		| 1;
+	prop_val = OPLUS_ADFR_SA_MAGIC
+        | OPLUS_ADFR_AUTO_MODE_MAGIC
+        | (OPLUS_ADFR_AUTO_ON << 16)
+        | OPLUS_ADFR_SA_MIN_FPS_MAGIC
+        | 1;
 
 	if (!oplus_adfr_is_supported(p_oplus_adfr_params)) {
 		ADFR_DEBUG("adfr is not supported\n");
@@ -1059,6 +1061,8 @@ int oplus_adfr_property_update(void *sde_connector, void *sde_connector_state, i
 			handled = BIT(0);
 
 			if (prop_val & OPLUS_ADFR_AUTO_MODE_MAGIC) {
+					p_oplus_adfr_params->auto_mode = OPLUS_ADFR_AUTO_ON;
+					p_oplus_adfr_params->auto_mode_updated = true;
 				if (p_oplus_adfr_params->need_filter_auto_on_cmd
 						&& (OPLUS_ADFR_AUTO_MODE_VALUE(prop_val) == OPLUS_ADFR_AUTO_ON)) {
 					ADFR_INFO("auto off cmds and auto on cmds could not be sent in the same frame, filter it out\n");
@@ -1823,7 +1827,9 @@ int oplus_adfr_status_reset(void *dsi_panel)
 	if ((h_skew == STANDARD_ADFR) || (h_skew == STANDARD_MFR)) {
 		p_oplus_adfr_params->auto_mode = OPLUS_ADFR_AUTO_OFF;
 		/* after auto off cmd was sent, auto on cmd filter start */
-		p_oplus_adfr_params->need_filter_auto_on_cmd = true;
+		p_oplus_adfr_params->auto_mode = OPLUS_ADFR_AUTO_ON;
+		p_oplus_adfr_params->auto_mode_updated = true;
+		p_oplus_adfr_params->need_filter_auto_on_cmd = false;
 		ADFR_DEBUG("oplus_adfr_need_filter_auto_on_cmd:%d\n", p_oplus_adfr_params->need_filter_auto_on_cmd);
 		OPLUS_ADFR_TRACE_INT("oplus_adfr_need_filter_auto_on_cmd", p_oplus_adfr_params->need_filter_auto_on_cmd);
 
@@ -1869,10 +1875,9 @@ int oplus_adfr_status_reset(void *dsi_panel)
 	if (p_oplus_adfr_params) {
 		p_oplus_adfr_params->sa_min_fps = 1;
 		p_oplus_adfr_params->sa_min_fps_updated = true;
-		if (p_oplus_adfr_params->auto_mode != OPLUS_ADFR_AUTO_ON) {
-			p_oplus_adfr_params->auto_mode = OPLUS_ADFR_AUTO_ON;
-			p_oplus_adfr_params->auto_mode_updated = true;
-		}
+
+		p_oplus_adfr_params->auto_mode = OPLUS_ADFR_AUTO_ON;
+		p_oplus_adfr_params->auto_mode_updated = true;
 	}
 
 	return rc;
