@@ -1661,21 +1661,21 @@ static int dsi_panel_parse_misc_host_config(struct dsi_host_common_cfg *host,
 	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-dma-schedule-line-60",
 				  &line_no);
 	if (rc)
-		host->dma_sched_line_60 = 0;
+		host->dma_sched_line_60 = 4;
 	else
 		host->dma_sched_line_60 = line_no;
 
 	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-dma-schedule-line-90",
 				  &line_no);
 	if (rc)
-		host->dma_sched_line_90 = 0;
+		host->dma_sched_line_90 = 4;
 	else
 		host->dma_sched_line_90 = line_no;
 
 	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-dma-schedule-line-120",
 				  &line_no);
 	if (rc)
-		host->dma_sched_line_120 = 0;
+		host->dma_sched_line_120 = 4;
 	else
 		host->dma_sched_line_120 = line_no;
 	DSI_ERR("[%s] DMA scheduling parameters Line[60][%d], Line[90][%d], Line[120][%d]\n", name,
