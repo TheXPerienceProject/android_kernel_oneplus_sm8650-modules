@@ -297,7 +297,10 @@ bool inline is_ftm_boot_mode(struct syna_tcm *tcm)
  */
 void syna_dev_update_lpwg_status(struct syna_tcm *tcm)
 {
-	tcm->lpwg_enabled = (tcm->gesture_type || tcm->touch_and_hold || (tcm->fp_active && !tcm->fp_prevent) || tcm->under_water_detect) ? true : false;
+	tcm->lpwg_enabled = (tcm->gesture_type || tcm->touch_and_hold ||
+			(tcm->fp_active && !tcm->fp_prevent) ||
+			((tcm->fp_hal_mode & FP_HAL_ACTIVE) && !tcm->fp_prevent) ||
+			tcm->under_water_detect) ? true : false;
 	return;
 }
 
@@ -872,6 +875,51 @@ static void findGestId(struct syna_tcm *tcm)
 	touch_data->g_type = gesture_type;
 }
 
+/*
+ * Report screen-on fingerprint transitions from the normal touch path. The
+ * userspace HAL controls this through the fingerprint_hal proc node; the
+ * low-power path below keeps handling screen-off gestures.
+ */
+static void syna_dev_report_fp_screen_on(struct syna_tcm *tcm)
+{
+	unsigned int idx;
+	unsigned int x = 0;
+	unsigned int y = 0;
+	bool down = false;
+	struct fp_underscreen_info fp_info;
+
+	if (!(tcm->fp_hal_mode & FP_HAL_REPORT) || tcm->pwr_state != PWR_ON)
+		return;
+
+	for (idx = 0; idx < tcm->tcm_dev->max_objects; ++idx) {
+		const unsigned char status = tcm->tp_data.object_data[idx].status;
+
+		if (status == FINGER || status == GLOVED_OBJECT) {
+			x = tcm->tp_data.object_data[idx].x_pos;
+			y = tcm->tp_data.object_data[idx].y_pos;
+			down = true;
+			break;
+		}
+	}
+
+	if (down && !tcm->is_fp_down) {
+		memset(&fp_info, 0, sizeof(fp_info));
+		fp_info.touch_state = 1;
+		fp_info.area_rate = 100;
+		fp_info.x = (uint16_t)x;
+		fp_info.y = (uint16_t)y;
+		tcm->is_fp_down = true;
+		touch_call_notifier_fp(tcm, &fp_info);
+		LOGD("screen on fingerprint down(%u %u)\n", x, y);
+	} else if (!down && tcm->is_fp_down) {
+		memset(&fp_info, 0, sizeof(fp_info));
+		fp_info.touch_state = 0;
+		tcm->is_fp_down = false;
+		touch_call_notifier_fp(tcm, &fp_info);
+		LOGD("screen on fingerprint up\n");
+	}
+}
+
 /**
  * syna_dev_report_input_events()
  *
@@ -910,6 +958,8 @@ static void syna_dev_report_input_events(struct syna_tcm *tcm)
 	touch_data = &tcm->tp_data;
 	object_data = &tcm->tp_data.object_data[0];
 
+	syna_dev_report_fp_screen_on(tcm);
+
 #ifdef ENABLE_WAKEUP_GESTURE
 	if (tcm->pwr_state == LOW_PWR/* && tcm->irq_wake*/) {
 		if (touch_data->gesture_id) {
@@ -928,9 +978,9 @@ static void syna_dev_report_input_events(struct syna_tcm *tcm)
 					touch_call_notifier_fp(tcm, &fp_info);
 
 					tcm->is_fp_down = true;
-					LOGI("screen off fingerprint down(%u %u)\n", fp_info.x, fp_info.y);
+					LOGD("screen off fingerprint down(%u %u)\n", fp_info.x, fp_info.y);
 					syna_send_signal(tcm, SIG_FINGER_DOWN);
-					LOGI("send finger down singal to app.\n");
+					LOGD("send finger down singal to app.\n");
 					tp_healthinfo_report(&tcm->monitor_data, HEALTH_REPORT, "screen_off_fp_down");
 				}/* else {
 					LOGI("repeat 'screen off fingerprint down' triggered\n");
@@ -940,9 +990,9 @@ static void syna_dev_report_input_events(struct syna_tcm *tcm)
 				fp_info.touch_state = 0;
 				touch_call_notifier_fp(tcm, &fp_info);
 				tcm->is_fp_down = false;
-				LOGI("screen off fingerprint up\n");
+				LOGD("screen off fingerprint up\n");
 				syna_send_signal(tcm, SIG_FINGER_UP);
-				LOGI("send finger up singal to app.\n");
+				LOGD("send finger up singal to app.\n");
 				tp_healthinfo_report(&tcm->monitor_data, HEALTH_REPORT, "screen_off_fp_up");
 			} else if (touch_data->gesture_id == FINGERPRINT_ERR_REPORT) {
 				LOGI("TP_FP_ERROR_REPORT:fingerprint error type:[%*ph]\n", 6, touch_data->extra_gesture_info);
@@ -2153,7 +2203,7 @@ static int syna_dev_enter_lowpwr_sensing(struct syna_tcm *tcm)
 void syna_send_signal(struct syna_tcm *tcm, int signal_num)
 {
 	if (tcm && tcm->proc_task != NULL && tcm->char_dev_ref_count) {
-		LOGI("Sending signal[%d] to app pid: %d\n", signal_num, (unsigned int)tcm->proc_pid);
+		LOGD("Sending signal[%d] to app pid: %d\n", signal_num, (unsigned int)tcm->proc_pid);
 		if (send_sig(signal_num, tcm->proc_task, 0) < 0) {
 			LOGE("Unable to send signal\n");
 		}
