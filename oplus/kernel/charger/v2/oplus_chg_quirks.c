@@ -152,9 +152,10 @@ static int quirks_diconnect_count(void)
 				count++;
 		}
 		i++;
+		unsigned long now = jiffies;
 		chg_debug("info%d[%d] plugout_jiffies:%lu,plugin_jiffies:%lu, jiffies:%lu,"
 			"abnormal_diconnect:%d, count:%d, in_20s:%d\n",
-			info->number, i, info->plugout_jiffies, info->plugin_jiffies, jiffies,
+			info->number, i, info->plugout_jiffies, info->plugin_jiffies, now,
 			info->abnormal_diconnect, count,
 			time_is_after_jiffies(info->plugin_jiffies + msecs_to_jiffies(KEEP_CONNECT_TIME_OUT)));
 	}
@@ -164,9 +165,10 @@ static int quirks_diconnect_count(void)
 			count++;
 	}
 	i++;
+	unsigned long now2 = jiffies;
 	chg_err("info%d[%d] plugout_jiffies:%lu,plugin_jiffies:%lu, jiffies:%lu,"
 		"abnormal_diconnect:%d, count:%d, in_20s:%d\n",
-		info->number, i, info->plugout_jiffies, info->plugin_jiffies, jiffies,
+		info->number, i, info->plugout_jiffies, info->plugin_jiffies, now2,
 		info->abnormal_diconnect, count,
 		time_is_after_jiffies(info->plugin_jiffies + msecs_to_jiffies(KEEP_CONNECT_TIME_OUT)));
 	return count;

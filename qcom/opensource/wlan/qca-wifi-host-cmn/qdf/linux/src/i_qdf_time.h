@@ -229,7 +229,8 @@ static inline __qdf_time_t __qdf_get_system_uptime(void)
 
 static inline unsigned long __qdf_get_system_timestamp(void)
 {
-	return (jiffies / HZ) * 1000 + (jiffies % HZ) * (1000 / HZ);
+	unsigned long now = jiffies;
+	return (now / HZ) * 1000 + (now % HZ) * (1000 / HZ);
 }
 
 #ifdef CONFIG_ARM

@@ -100,10 +100,11 @@ static void oplus_msg_queue_update_work(struct work_struct *work)
 		struct oplus_msg_queue, update_work);
 
 	if (queue->update_request_jiffies) {
+		unsigned long now = jiffies;
 		chg_info("%s: update delay: %u ms, update interval: %u ms\n",
 			 queue->name,
-			 jiffies_to_msecs(calculate_jiffies_diff(queue->update_request_jiffies, jiffies)),
-			 jiffies_to_msecs(calculate_jiffies_diff(queue->last_update_jiffies, jiffies)));
+			 jiffies_to_msecs(calculate_jiffies_diff(queue->update_request_jiffies, now)),
+			 jiffies_to_msecs(calculate_jiffies_diff(queue->last_update_jiffies, now)));
 		queue->update_request_jiffies = 0;
 	}
 	if (queue->filter->update_func)
