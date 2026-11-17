@@ -549,7 +549,7 @@ static int syna_dev_set_fingerprint_enable(struct syna_tcm *tcm, unsigned short 
 
 	config = (config & 0xf0) | (value & 0x0f);
 
-	LOGI("HBP set touch_and_hold(0x%04x)\n", config);
+	LOGD("HBP set touch_and_hold(0x%04x)\n", config);
 
 	retval = syna_tcm_set_dynamic_config(tcm->tcm_dev,
 			DC_TOUCH_AND_HOLD,
@@ -1181,9 +1181,9 @@ static int syna_dev_create_input_device(struct syna_tcm *tcm)
 	set_bit(ABS_MT_POSITION_Y, input_dev->absbit);
 	set_bit(ABS_MT_PRESSURE, input_dev->absbit);
 	set_bit(ABS_MT_TOOL_TYPE, input_dev->absbit);
-	set_bit(ABS_TOUCH_COST_TIME_KERNEL, input_dev->absbit);
-	set_bit(ABS_TOUCH_COST_TIME_ALGO, input_dev->absbit);
-	set_bit(ABS_TOUCH_COST_TIME_DAEMON, input_dev->absbit);
+	// set_bit(ABS_TOUCH_COST_TIME_KERNEL, input_dev->absbit);
+	// set_bit(ABS_TOUCH_COST_TIME_ALGO, input_dev->absbit);
+	// set_bit(ABS_TOUCH_COST_TIME_DAEMON, input_dev->absbit);
 
 	set_bit(BTN_TOUCH, input_dev->keybit);
 	set_bit(BTN_TOOL_FINGER, input_dev->keybit);
